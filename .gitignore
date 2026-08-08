@@ -1,0 +1,10 @@
+.venv/
+.firecrawl/
+.matplotlib/
+models/
+tmp/
+data/raw/
+__pycache__/
+*.py[cod]
+*.mp4
+outputs/transcricao

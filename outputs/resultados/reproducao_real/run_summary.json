@@ -1,0 +1,18 @@
+{
+  "data": "data\\raw\\trmm_3b42_monthly_1998_2015_upper_sao_francisco.csv",
+  "scales": [
+    1,
+    3,
+    6,
+    9,
+    12,
+    18,
+    24,
+    48
+  ],
+  "paper_year_counts": [
+    15
+  ],
+  "deep_learning_executed": false,
+  "output": "outputs\\resultados\\reproducao_real"
+}
