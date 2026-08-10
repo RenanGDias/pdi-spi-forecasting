@@ -8,7 +8,7 @@ Este repositório reproduz e audita o artigo **“Artificial neural network-base
 
 ## Resultado concluído
 
-O diagnóstico final encontrou vazamento no protocolo descrito pelo artigo. A CNN espacial causal melhorou o RMSE frente ao regressor selecionado em 6 das 8 escalas, mas persistência permaneceu competitiva. Consulte `RELATORIO_FINAL.md` para a conclusão, evidências, figuras e limitações.
+O diagnóstico final encontrou vazamento no protocolo descrito pelo artigo. A seleção da ANN#15 entre 17 modelos não se reproduz: a métrica usada pelo artigo cresce monotonicamente com o número de anos de entrada, porque é calculada sobre os 169 pontos da grade e 70% deles estão no treino. Sob protocolo causal, o R médio cai de 0,82 para 0,26–0,37 e o kappa colapsa de 0,70 para cerca de 0,07. A CNN espacial causal melhorou o RMSE frente ao regressor selecionado em 6 das 8 escalas, mas persistência permaneceu competitiva. Consulte `RELATORIO_FINAL.md` para a conclusão, evidências, figuras e limitações.
 
 ## Conteúdo principal
 
@@ -17,6 +17,7 @@ O diagnóstico final encontrou vazamento no protocolo descrito pelo artigo. A CN
 - `scripts/gee_export_trmm.js`: exportação da grade mensal TRMM/3B42 V7 (13x13, 1998-2015).
 - `scripts/run_audit.py`: reprodução paper-like, auditoria causal, baselines e modelos melhorados.
 - `scripts/analyze_paper_orderings.py`: testa a divisão 70/15/15 ordenada por ponto espacial.
+- `scripts/run_paper_claims.py`: coloca à prova as afirmações do artigo — a varredura ANN#1–#17, o efeito do early stopping declarado e quanto da correlação a sobreposição de janelas explica.
 - `scripts/run_deep_only.py`: executa a CNN espacial causal sem repetir as ANNs do artigo.
 - `scripts/build_final_plots.py`: gera as figuras finais da auditoria.
 - `src/spi_audit/`: cálculo do SPI, desenhos amostrais, métricas, modelos e CNN espacial.
@@ -88,6 +89,8 @@ Este cenário não é recomendado; ele existe para descobrir se reproduz as tabe
 ## Interpretação do vazamento
 
 A sobreposição de meses em um índice acumulado não é, isoladamente, prova de vazamento: meses anteriores à origem são informação causalmente disponível. Ela torna escalas longas previsíveis por persistência e exige que o horizonte seja declarado com precisão. Há vazamento quando dados/rótulos de 2015 influenciam o ajuste do SPI, o treinamento, a escolha de ANN#15/11 neurônios ou qualquer pré-processamento.
+
+Duas sobreposições distintas aparecem no projeto e não devem ser confundidas. `known_window_fraction` mede quanto da janela do alvo já é conhecido em uma data de origem, e vale para o protocolo causal. `annual_lag_overlap` mede quanto a janela do alvo compartilha com a do mesmo mês em um ano anterior, `max(0, escala − 12) / escala`, e é a que vale para o desenho do artigo, cujos atributos são o mesmo mês em anos anteriores. Pela segunda medida, escalas de até 12 meses não têm sobreposição alguma.
 
 O diagnóstico final é feito pela diferença entre:
 

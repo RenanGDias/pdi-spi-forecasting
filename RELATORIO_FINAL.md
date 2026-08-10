@@ -4,12 +4,15 @@
 
 **Conclusão: há vazamento de dados no protocolo descrito pelo artigo, e as métricas publicadas não devem ser interpretadas como desempenho de uma previsão temporal independente de 2015.**
 
-A ausência do código e dos pesos originais impede uma perícia bit a bit da implementação dos autores. Ainda assim, duas conclusões são sustentadas pelo texto e pela reprodução:
+A ausência do código e dos pesos originais impede uma perícia bit a bit da implementação dos autores. Ainda assim, três conclusões são sustentadas pelo texto e pela reprodução:
 
 1. o desempenho em 2015 é reutilizado para escolher a ANN nº 15 entre 17 configurações, contaminando o conjunto que deveria funcionar como teste final;
-2. na reconstrução coerente com as figuras e a divisão 70%/15%/15%, 70% dos próprios rótulos de SPI de 2015 entram no ajuste. Quando as amostras são ordenadas por ponto espacial, as correlações publicadas ficam mais próximas da avaliação sobre **todos os 169 pontos, incluindo treino**, do que do teste interno em 7 das 8 escalas.
+2. na reconstrução coerente com as figuras e a divisão 70%/15%/15%, 70% dos próprios rótulos de SPI de 2015 entram no ajuste. Quando as amostras são ordenadas por ponto espacial, as correlações publicadas ficam mais próximas da avaliação sobre **todos os 169 pontos, incluindo treino**, do que do teste interno em 7 das 8 escalas;
+3. a métrica com que o artigo compara os 17 modelos **cresce monotonicamente com o número de anos de entrada**, de modo que ela não pode ter selecionado a ANN nº 15 como ótimo.
 
 O erro absoluto médio entre as correlações mensais publicadas e as reproduzidas foi **0,105** quando se avaliaram todos os pontos, contra **0,232** quando se avaliou apenas o teste interno. Isso é evidência empírica forte de que os números publicados incorporam amostras usadas no ajuste ou uma dependência espacial equivalente.
+
+O argumento mais direto, porém, é textual e não depende de reproduzir número algum: o artigo afirma na Seção 3 que os valores de R e κ da Figura 5 foram obtidos *“at each of the 169 grid points”*. Se a divisão 70%/15%/15% incide sobre pares mês-ponto, avaliar nos 169 pontos inclui necessariamente os 70% usados no ajuste.
 
 Em seguida, foi executado um protocolo estritamente causal: treino até 2013, seleção/early stopping em 2014 e teste único em 2015. Uma CNN residual espacial com convoluções 3×3 e perda de gradiente — componente de PDI — reduziu o RMSE médio mensal frente ao regressor selecionado em 2014 em 6 das 8 escalas, com ganho médio de **15,9%**. O ganho não foi universal: persistência ainda venceu em SPI-9 e SPI-24, e a CNN não melhorou o regressor selecionado em SPI-1 e SPI-12.
 
@@ -91,6 +94,27 @@ O resultado não prova que os autores usaram exatamente a mesma ordem de amostra
 
 O artigo compara 17 modelos definidos pelo número de anos de entrada e escolhe a ANN nº 15 a partir do desempenho das previsões de 2015. Mesmo que a divisão interna 70%/15%/15% estivesse correta, essa escolha usa o teste final para seleção de hiperparâmetro. O desempenho resultante é otimista.
 
+A comparação foi refeita para as 17 configurações em `scripts/run_paper_claims.py`. A seleção da ANN nº 15 **não se reproduz**, e o motivo é informativo:
+
+| ANN# | 1 | 5 | 10 | 12 | 14 | 15 | 16 | 17 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| R médio entre as oito escalas | 0,252 | 0,593 | 0,736 | 0,800 | 0,835 | 0,899 | 0,929 | **0,977** |
+
+O R médio sobre os 169 pontos cresce de forma estritamente monótona com o número de anos de entrada, e a ANN nº 17 vence em sete das oito escalas. Isso é esperado: mais anos de entrada significam mais atributos e mais parâmetros, e a métrica é dominada pelos 70% de amostras usadas no ajuste. **A curva mede capacidade de ajuste, não habilidade de previsão**, e por construção não possui um ótimo interior em 15.
+
+Esse resultado é independente da fidelidade numérica da reimplementação: qualquer implementação que avalie nos 169 pontos com 70% deles no treino produzirá uma curva monótona.
+
+### 3b. As conclusões não dependem da ausência de early stopping
+
+O artigo declara que o treino é interrompido quando o MSE da validação deixa de cair. O L-BFGS de segunda ordem usado na reprodução não expõe essa parada, o que exagera o contraste entre treino e teste. O contraste foi refeito com `paper_mlp(early_stopping=True)`:
+
+| Variante | erro médio vs todos os pontos | erro médio vs teste interno | mais perto de “todos” |
+|---|---:|---:|---:|
+| sem early stopping | 0,108 | 0,236 | 7 de 8 escalas |
+| com early stopping | 0,111 | 0,182 | 7 de 8 escalas |
+
+O early stopping reduz o sobreajuste, como esperado — o R de treino cai de 0,96 para 0,92 em média —, mas a direção da evidência não muda. A conclusão da Seção 2 é robusta a essa diferença de implementação.
+
 ### 4. O SPI provavelmente é calibrado com o período completo
 
 O artigo calcula os SPIs no período completo antes de explicar as partições e não informa um corte de calibração. Ajustar a distribuição Gamma com dados até dezembro de 2015 transfere informação da distribuição do teste para treino e validação. Na auditoria causal, os parâmetros do SPI foram calibrados somente até dezembro de 2013.
@@ -99,16 +123,36 @@ O artigo calcula os SPIs no período completo antes de explicar as partições e
 
 A sobreposição das janelas acumuladas não é, por si só, vazamento se todos os meses usados já eram conhecidos na data de origem. Ela é, porém, uma fonte enorme de persistência e torna enganosa a interpretação de “previsão de 12 meses”.
 
+### Duas sobreposições diferentes, que não devem ser confundidas
+
+**(a) Fração já conhecida em uma data de origem.** Responde à pergunta “quanto da janela do alvo um previsor posicionado em 31/12/2014 já observou?”. É a medida relevante para o *protocolo causal* desta auditoria, em que a entrada são os meses que antecedem a origem.
+
 ![Fração conhecida das janelas SPI](outputs/resultados/reproducao_real/spi_overlap_heatmap.png)
 
-Em 31/12/2014:
+Em 31/12/2014: o SPI-48 de janeiro/2015 já contém 47 de 48 meses conhecidos (97,9%); o de dezembro/2015 ainda contém 36 de 48 (75,0%); o SPI-24 varia de 95,8% em janeiro a 50,0% em dezembro; o SPI-1 não contém nenhum mês conhecido de 2015.
 
-- o SPI-48 de janeiro/2015 já contém 47 de 48 meses conhecidos, ou 97,9%;
-- o SPI-48 de dezembro/2015 ainda contém 36 de 48 meses conhecidos, ou 75,0%;
-- o SPI-24 varia de 95,8% conhecido em janeiro a 50,0% em dezembro;
-- o SPI-1 não contém nenhum mês conhecido de 2015.
+**(b) Sobreposição entre o alvo e o atributo, no desenho do artigo.** Esta é a medida que se aplica ao artigo, e é diferente. A rede do artigo **não recebe os meses que antecedem a origem**: ela recebe o *mesmo mês do calendário* em anos anteriores. Duas janelas de `s` meses separadas por doze meses compartilham `max(0, s − 12)` meses, ou seja `max(0, s − 12) / s` — implementado em `annual_lag_overlap`. Para o SPI-48 de janeiro/2015, o atributo mais recente é janeiro/2014, e a sobreposição é de 36 meses (75%), não de 47.
 
-Portanto, correlações altas em SPI-24 e SPI-48 podem refletir a própria definição do índice e devem sempre ser comparadas com persistência.
+Confundir (a) com (b) superestima o problema em escalas curtas: pela medida (a) o SPI-12 de dezembro/2015 parece ter meses conhecidos, mas no desenho do artigo a sobreposição entre janelas de 12 meses separadas por um ano é exatamente **zero**.
+
+### Quanto da correlação publicada a sobreposição explica
+
+A persistência trivial — copiar o SPI de 2014 para 2015, ponto a ponto e mês a mês — isola o efeito de (b):
+
+| SPI | sobreposição alvo × atributo | R da persistência | R publicado | não explicado |
+|---:|---:|---:|---:|---:|
+| 1 | 0,0% | −0,187 | 0,617 | 0,803 |
+| 3 | 0,0% | −0,029 | 0,759 | 0,788 |
+| 6 | 0,0% | −0,013 | 0,917 | 0,930 |
+| 9 | 0,0% | −0,166 | 0,540 | 0,705 |
+| 12 | 0,0% | −0,279 | 0,913 | 1,192 |
+| 18 | 33,3% | 0,208 | 0,901 | 0,693 |
+| 24 | 50,0% | 0,591 | 0,942 | 0,350 |
+| 48 | 75,0% | 0,768 | 0,945 | 0,177 |
+
+O R da persistência acompanha a sobreposição quase perfeitamente, o que confirma o mecanismo onde ele existe. Mas a média é de **0,112 contra 0,817 publicado**: a sobreposição de janelas, sozinha, **não explica os números do artigo**. Ela explica boa parte do desempenho em SPI-24 e SPI-48 e praticamente nada em SPI-1 a SPI-12.
+
+A conclusão prática se mantém, com a atribuição correta: correlações altas em SPI-24 e SPI-48 podem refletir a própria definição do índice e devem sempre ser comparadas com persistência; já os valores altos publicados nas escalas curtas exigem a explicação de protocolo das seções anteriores, não a de sobreposição.
 
 ## Protocolo causal usado na melhoria
 
@@ -161,6 +205,9 @@ A CNN foi o melhor dos três grupos em 4 das 8 escalas e superou o regressor sel
 4. **Dependência espacial:** validação futura deve usar blocos espaciais quando o objetivo incluir transferência geográfica.
 5. **Extremos raros:** RMSE e correlação não bastam. Devem ser adicionados recall/precision por classe de seca, erro de duração e intensidade de eventos, Brier score e intervalos de confiança por bootstrap em blocos.
 6. **Produto de precipitação:** uma extensão deve comparar TRMM com CHIRPS, ERA5-Land ou GPM e quantificar incerteza do produto.
+7. **Otimizador:** o artigo usa Levenberg–Marquardt; a reprodução usa L-BFGS como aproximação de segunda ordem, ou Adam quando o early stopping é ativado. Nenhum dos dois é o algoritmo original.
+8. **Origem dos dados:** o artigo obtém o TRMM 3B42 diretamente da NASA; esta reprodução usa a coleção `TRMM/3B42` do Earth Engine, agregada de três horas para mensal. Os produtos devem ser equivalentes, mas isso não foi verificado célula a célula.
+9. **O teste interno não é uma estimativa honesta:** mesmo o subconjunto de 15% do protocolo paper-like contém pontos espacialmente vizinhos aos de treino e tem 2015 como alvo em todas as amostras. Ele serve para o contraste diagnóstico, não como medida de habilidade preditiva. A única estimativa honesta deste trabalho é a do protocolo causal.
 
 ## Próximos experimentos recomendados
 
@@ -178,6 +225,7 @@ A CNN foi o melhor dos três grupos em 4 das 8 escalas e superou o regressor sel
 .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe scripts\run_audit.py "data\raw\trmm_3b42_monthly_1998_2015_upper_sao_francisco.csv" --output "outputs\resultados\reproducao_real" --scales 1 3 6 9 12 18 24 48
 .\.venv\Scripts\python.exe scripts\analyze_paper_orderings.py "outputs\resultados\reproducao_real"
+.\.venv\Scripts\python.exe scripts\run_paper_claims.py "outputs\resultados\reproducao_real"
 .\.venv\Scripts\python.exe scripts\run_deep_only.py "outputs\resultados\reproducao_real" --scales 1 3 6 9 12 18 24 48
 .\.venv\Scripts\python.exe scripts\build_final_plots.py "outputs\resultados\reproducao_real"
 ```
@@ -185,6 +233,9 @@ A CNN foi o melhor dos três grupos em 4 das 8 escalas e superou o regressor sel
 ## Artefatos principais
 
 - métricas do protocolo semelhante ao artigo: `outputs/resultados/reproducao_real/paper_like_metrics_by_split.csv`;
+- varredura ANN#1–#17: `outputs/resultados/reproducao_real/paper_claim_model_sweep.csv`;
+- contraste de early stopping: `outputs/resultados/reproducao_real/paper_claim_early_stopping.csv`;
+- persistência trivial e sobreposição: `outputs/resultados/reproducao_real/paper_claim_persistence.csv`;
 - ordenação espacial e partições: `outputs/resultados/reproducao_real/paper_like_point_major_partitions.csv`;
 - comparação mensal publicada × reprodução: `outputs/resultados/reproducao_real/reported_vs_point_major_monthly_r.csv`;
 - métricas causais tabulares: `outputs/resultados/reproducao_real/causal_metrics.csv`;
