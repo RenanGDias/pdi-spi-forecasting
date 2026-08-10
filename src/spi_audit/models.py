@@ -17,8 +17,34 @@ def scaled_regressor(regressor):
     )
 
 
-def paper_mlp(hidden_neurons: int = 11, random_state: int = 42):
-    """Aproxima a MLP sigmoide/linear e o treino de segunda ordem do artigo."""
+def paper_mlp(
+    hidden_neurons: int = 11,
+    random_state: int = 42,
+    early_stopping: bool = False,
+):
+    """Aproxima a MLP sigmoide/linear e o treino de segunda ordem do artigo.
+
+    O artigo declara que o treino é interrompido quando o MSE da validação
+    deixa de cair, mas o L-BFGS de segunda ordem não expõe essa parada. Com
+    ``early_stopping=True`` a otimização passa a ser iterativa e reserva uma
+    fração do treino para a parada, o que permite testar se as conclusões da
+    auditoria dependem do ajuste sem parada.
+    """
+    if early_stopping:
+        return scaled_regressor(
+            MLPRegressor(
+                hidden_layer_sizes=(hidden_neurons,),
+                activation="logistic",
+                solver="adam",
+                alpha=0.0,
+                max_iter=2000,
+                early_stopping=True,
+                # 15/85: reproduz a proporção validação/treino declarada pelo artigo.
+                validation_fraction=0.1765,
+                n_iter_no_change=15,
+                random_state=random_state,
+            )
+        )
     return scaled_regressor(
         MLPRegressor(
             hidden_layer_sizes=(hidden_neurons,),
